@@ -1,0 +1,6 @@
+.DS_Store
+result_files/*
+weight_files/*
+expert_files/*
+__pycache__/
+logs/*
