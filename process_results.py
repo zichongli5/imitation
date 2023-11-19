@@ -41,6 +41,12 @@ def process_results(result_path):
     mean_timesteps_list = []
     std_timesteps_list = []
     params_list = []
+
+    bc_returns_list = []
+    bc_timesteps_list = []
+    iq_returns_list = []
+    iq_timesteps_list = []
+
     episodes_index_list = [[] for i in range(len(episodes_list))]
     for i, params in enumerate(file_dict.keys()):
         returns_list.append([])
@@ -52,6 +58,12 @@ def process_results(result_path):
             data = np.load(file_path)
             returns_list[i].append(data['returns'])
             timesteps_list[i].append(data['timesteps'])
+            if 'bc_returns' in data.keys():
+                bc_returns_list.append(data['bc_returns'])
+                bc_timesteps_list.append(data['bc_timesteps'])
+            if 'iq_returns' in data.keys():
+                iq_returns_list.append(data['iq_returns'])
+                iq_timesteps_list.append(data['iq_timesteps'])
         mean_returns_list.append(np.mean(returns_list[i]))
         std_returns_list.append(np.std(returns_list[i]))
         mean_timesteps_list.append(np.mean(timesteps_list[i]))
@@ -69,10 +81,16 @@ def process_results(result_path):
         # print(index_list)
         best_index = np.argmax(mean_returns_list[index_list])
         print('Expert Episodes: {}'.format(episodes_list[i]))
-        print('Best model: {}'.format(params_list[index_list[best_index]]))
+        print('Best model: {}'.format(file_dict[params_list[index_list[best_index]]]))
         print('Mean returns: {} +/- {}'.format(mean_returns_list[index_list[best_index]], std_returns_list[index_list[best_index]]))
         print('Mean timesteps: {} +/- {}'.format(mean_timesteps_list[index_list[best_index]], std_timesteps_list[index_list[best_index]]))
         print(np.mean(returns_list[index_list[best_index]],1))
+        if len(bc_returns_list) > 0:
+            print('Mean BC returns: {} +/- {}'.format(np.mean(bc_returns_list[index_list[best_index]]), np.std(bc_returns_list[index_list[best_index]])))
+            print('Mean BC timesteps: {} +/- {}'.format(np.mean(bc_timesteps_list[index_list[best_index]]), np.std(bc_timesteps_list[index_list[best_index]])))
+        if len(iq_returns_list) > 0:
+            print('Mean IQ returns: {} +/- {}'.format(np.mean(iq_returns_list[index_list[best_index]]), np.std(iq_returns_list[index_list[best_index]])))
+            print('Mean IQ timesteps: {} +/- {}'.format(np.mean(iq_timesteps_list[index_list[best_index]]), np.std(iq_timesteps_list[index_list[best_index]])))
     # Save the results
     with open(os.path.join(result_path, 'summary.pkl'), 'wb') as f:
         pickle.dump({'file_prefix_list': params_list, 'mean_returns_list': mean_returns_list, 'std_returns_list': std_returns_list, 'mean_timesteps_list': mean_timesteps_list, 'std_timesteps_list': std_timesteps_list}, f)

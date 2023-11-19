@@ -1,8 +1,8 @@
 # @package _global_
 
 env:
-  name: Hopper-v2
-  demo: Hopper-v2_25.pkl
+  name: HopperBulletEnv-v0
+  # demo: Hopper-v2_25.pkl
   # learn_steps: 1e5
   # eval_interval: 1e3
 

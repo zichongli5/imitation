@@ -95,6 +95,7 @@ def train_cqil(args):
     # Q = agent.critic
     # IQ_actor = agent.actor
     
+    # Rollout IQ agent for training rewawrd network
     rng=np.random.default_rng(seed)
     rollouts = rollout.rollout(iq_agent.predict, eval_env, 
                                rollout.make_sample_until(min_timesteps=None, min_episodes=args.iq_episodes),
@@ -105,9 +106,9 @@ def train_cqil(args):
     stats = rollout.rollout_stats(rollouts)
     print(f"Rollout stats: {stats}")
     transitions = rollout.flatten_trajectories(rollouts)
-    # return 0
+
+    # Create reward network
     reward_net = BasicRewardNet(eval_env.observation_space, eval_env.action_space, use_state=True, use_action=True, use_next_state=True, hid_sizes=(args.rw_hidden_size,args.rw_hidden_size))
-    # print(transitions)
 
     # Train reward network
     print('-----------------Start training reward network-----------------')
@@ -215,10 +216,10 @@ if __name__ == "__main__":
 
     # Reward Net training parameters
     parser.add_argument("--iq_episodes", default=100, type=int)
-    parser.add_argument("--rw_epochs", default=30, type=int)
+    parser.add_argument("--rw_epochs", default=20, type=int)
     parser.add_argument("--rw_batch_size", default=64, type=int)
-    parser.add_argument("--rw_lr", default=3e-4, type=float)
-    parser.add_argument("--rw_hidden_size", default=256, type=int)
+    parser.add_argument("--rw_lr", default=1e-5, type=float)
+    parser.add_argument("--rw_hidden_size", default=64, type=int)
 
     # IQ learn parameters
     parser.add_argument("--iq_path", default='/home/zli911/imitation/baselines/IQ-Learn/iq_learn/', type=str)

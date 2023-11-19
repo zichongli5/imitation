@@ -32,8 +32,7 @@ def create_env(env_id, n_envs=1, norm_obs=True, norm_reward=False, norm_action=F
     # env = DummyVecEnv([lambda: env])
     # env.seed(seed=0)
     env = make_vec_env(env_id, n_envs, seed=seed, wrapper_class=env_wrapper)
-    if reward_wrap is not None:
-        env = RewardVecEnvWrapper(env, reward_wrap.predict_processed, 0)
+
     if norm_obs or norm_reward:
         if stats_path is not None:
             if not manual_load:
@@ -48,7 +47,9 @@ def create_env(env_id, n_envs=1, norm_obs=True, norm_reward=False, norm_action=F
             print('No stats path provided! Initialize the stats for normalization!')
             env = VecNormalize(env, norm_obs=norm_obs, norm_reward=norm_reward)
             env.training = True
-    
+            
+    if reward_wrap is not None:
+        env = RewardVecEnvWrapper(env, reward_wrap.predict_processed, 0)
     # env.norm_reward = norm_reward
     # env.norm_obs = norm_obs
 

@@ -112,7 +112,19 @@ def test_zoo_expert(args):
     zoo_path = '/home/zli911/imitation/expert_files/rl-trained-agents'
     config_path = os.path.join(config_path, algo, env_id+'_1', env_id)
     stats_path = os.path.join(zoo_path, algo, env_id+'_1', env_id, 'vecnormalize.pkl')
-    model_path = os.path.join(zoo_path, algo, env_id+'_1',env_id+'.zip')
+    model_path = os.path.join(zoo_path, algo, env_id+'_1',env_id+'_gymnasium.zip')
+    
+    if not os.path.exists(model_path) and args.test_zoo:
+        custom_objects = {
+            "learning_rate": 0.0,
+            "lr_schedule": lambda _: 0.0,
+            "clip_range": lambda _: 0.0,
+        }
+        print('No model path provided, load the old pretrained expert and resave it!')
+        model_path_old = os.path.join(zoo_path, algo, env_id+'_1',env_id+'.zip')
+        expert = ALGOS[algo].load(model_path_old, custom_objects=custom_objects)
+        expert.save(model_path)
+        print('Expert model re-saved!')
 
     # Load hyperparameters from yaml file
     hyperparams = get_saved_hyperparams(config_path)
@@ -134,13 +146,14 @@ def save_expert_trajectory_IQ(args):
         eval_env, expert = test_expert(args)
 
     # Collect expert trajectories
-    eval_env.seed(args.seed)
+    eval_env.seed(seed=100)
     rng=np.random.default_rng(args.seed)
     rollouts = rollout.rollout(expert, eval_env, 
                                rollout.make_sample_until(min_timesteps=None, min_episodes=50),
                                unwrap=False,
                                verbose=True,
                                rng=rng,
+                               deterministic_policy=True
                                )
     # Truncate rollouts based on expert_episodes
     stats = rollout.rollout_stats(rollouts)
@@ -149,13 +162,15 @@ def save_expert_trajectory_IQ(args):
 
     expert_trajs = defaultdict(list)
     for traj_num in range(len(rollouts)):
+        if len(rollouts[traj_num].acts) < 1000:
+            continue
         expert_trajs["states"].append(rollouts[traj_num].obs[:-1].reshape(len(rollouts[traj_num].acts),1,-1))
         expert_trajs["next_states"].append(rollouts[traj_num].obs[1:].reshape(len(rollouts[traj_num].acts),1,-1))
         expert_trajs["actions"].append(rollouts[traj_num].acts.reshape(len(rollouts[traj_num].acts),1,-1))
         expert_trajs["rewards"].append(rollouts[traj_num].rews.reshape(len(rollouts[traj_num].acts),1))
         expert_trajs["dones"].append(np.array([[False]]*len(rollouts[traj_num].acts)))
         expert_trajs["lengths"].append(len(rollouts[traj_num].acts))
-
+    print(f'Collect {len(expert_trajs["lengths"])} trajectories!')
     save_path = os.path.join(args.save_path, args.env_id, args.algo)
     if not os.path.exists(save_path):
         os.makedirs(save_path)

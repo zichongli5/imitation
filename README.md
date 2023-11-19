@@ -28,6 +28,17 @@ To run our method, you should first train an IQ-learn model by
 cd baselines/IQ-Learn/iq_learn
 python train_iq.py env=cheetah agent=sac expert.demos=1 method.loss=value method.regularize=True agent.actor_lr=3e-05 seed=0
 ```
-For other environment, scripts can be found in 'baselines/IQ-Learn/iq_learn/scripts'; However, for mujoco tasks, iq-learn use the original mujoco env but we use pybullet env, so you may need to alter the config file in 'baselines/IQ-Learn/iq_learn/conf/env' and change the env name to pybullet version.
+For other environment, IQ-learn training scripts can be found in 'baselines/IQ-Learn/iq_learn/scripts'; However, for mujoco tasks, iq-learn use the original mujoco env but we use pybullet env, so you may need to alter the config file in 'baselines/IQ-Learn/iq_learn/conf/env' and change the env name to pybullet version (I've done so for halfcheetah and hopper).
 
-# Tuning
+After training IQ-learn agent, you can run our method (I name it Coherent Q-function Imitation Learning (CQIL) for now) by
+```
+python train_cqil.py
+```
+
+Run behavior cloning and CSIL by
+```
+python train_bc.py
+python train_csil.py
+```
+
+**Note**: Current code only support continuous env in mujoco.

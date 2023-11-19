@@ -29,6 +29,7 @@ def train_bc(env, expert, expert_episodes=1, seed=0, save=True, args=None):
                                unwrap=False,
                                verbose=True,
                                rng=rng,
+                               deterministic_policy=True
                                )
     # Truncate rollouts based on expert_episodes
     rollouts = rollouts[:expert_episodes]
@@ -89,12 +90,12 @@ if __name__ == "__main__":
     parser.add_argument("--save_result", default='/home/zli911/imitation/result_files/', type=str)
 
 
-    parser.add_argument("--expert_episodes", default=50, type=int)
-    parser.add_argument("--bc_algo", default='ppo', type=str)
-    parser.add_argument("--bc_epochs", default=20, type=int)
-    parser.add_argument("--bc_batch_size", default=64, type=int)
+    parser.add_argument("--expert_episodes", default=1, type=int)
+    parser.add_argument("--bc_algo", default='sac', type=str)
+    parser.add_argument("--bc_epochs", default=100, type=int)
+    parser.add_argument("--bc_batch_size", default=32, type=int)
     parser.add_argument("--bc_hidden_size", default=256, type=int)
-    parser.add_argument("--bc_ent_weight", default=0.05, type=float)
+    parser.add_argument("--bc_ent_weight", default=0.00, type=float)
     parser.add_argument("--bc_l2_weight", default=0.01, type=float)
     
     args = parser.parse_args()
