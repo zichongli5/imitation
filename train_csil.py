@@ -15,8 +15,8 @@ from imitation.data import rollout
 from imitation.rewards.reward_wrapper import RewardVecEnvWrapper
 
 from utils import create_env, evaluate, get_saved_hyperparams, wrap_bc_policy, preprocess_hyperparams, load_pretrained_expert, load_stats_to_env
-from train_bc import train_bc
-from networks import RewardNet_from_policy
+from train_bc_atari import train_bc
+from networks import RewardNet_from_policy, SACBCPolicy
 
 def train_csil(args):
     
@@ -25,6 +25,8 @@ def train_csil(args):
     algo = args.algo
     config_path = args.config_path
     seed = args.seed
+    args.bc_algo = algo
+    print(args)
 
 
     config_expert_path = os.path.join(config_path, 'ppo', env_id+'_1', env_id)
@@ -51,7 +53,7 @@ def train_csil(args):
     # Create environment
     print(hyperparams_expert)
     env_wrapper = get_wrapper_class(hyperparams_expert)
-    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams_expert['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, env_wrapper=env_wrapper, manual_load=args.test_zoo)
+    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams_expert['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, env_wrapper=env_wrapper, frame_num=hyperparams_expert['frame_stack'], manual_load=args.test_zoo)
     custom_objects = {
         "learning_rate": 0.0,
         "lr_schedule": lambda _: 0.0,
@@ -67,29 +69,42 @@ def train_csil(args):
     bc_trainer, bc_returns, bc_timesteps = train_bc(eval_env, expert, expert_episodes=args.expert_episodes, seed=0, save=False, args=args)
 
     # Wrap the bc policy into a reward network
-    reward_net = RewardNet_from_policy(bc_trainer.policy, alpha=args.bc_ent_weight)
+    reward_net = RewardNet_from_policy(bc_trainer.policy.cpu(), alpha=1.0)
     print('Reward network created!')
 
     # Wrap the environment with the reward network
     n_envs = 1
-    env_train = create_env(env_id, n_envs=n_envs, norm_obs=hyperparams_expert['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, env_wrapper=env_wrapper, manual_load=args.test_zoo,
+    env_train = create_env(env_id, n_envs=n_envs, norm_obs=hyperparams_expert['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, env_wrapper=env_wrapper, frame_num=hyperparams_expert['frame_stack'], manual_load=args.test_zoo,
                            reward_wrap=reward_net)
     print('Environment wrapped with reward network!')
 
     # Create CSIL agent
     # config_path = os.path.join(config_path, algo, env_id+'_1', env_id)
     # hyperparams = get_saved_hyperparams(config_path)
-    csil_trainer = ALGOS[algo](policy='MlpPolicy', env=env_train, verbose=1, seed=seed, 
+    if algo == 'sac':
+        csil_trainer = ALGOS['sac'](policy='MlpPolicy', env=env_train, verbose=1, seed=seed, 
                                 batch_size=args.csil_batch_size, buffer_size=args.csil_buffer_size,
                                 tau=args.csil_tau, learning_rate=args.csil_lr, train_freq=args.csil_train_freq,
-                                gradient_steps=args.csil_gradient_steps)
+                                gradient_steps=args.csil_gradient_steps, policy_kwargs=dict(net_arch=[args.bc_hidden_size, args.bc_hidden_size]))
+    elif algo == 'ppo':
+        csil_trainer = ALGOS['ppo'](policy='CnnPolicy', env=env_train, learning_rate=args.csil_lr, 
+                                        n_steps=args.csil_n_steps, batch_size=args.csil_batch_size, 
+                                        n_epochs=args.csil_n_epochs, clip_range=args.csil_clip_range,
+                                        policy_kwargs=dict(net_arch=[args.bc_hidden_size, args.bc_hidden_size]), 
+                                        verbose=1)
+    else:
+        raise NotImplementedError
     # csil_trainer = ALGOS['ppo'](policy='MlpPolicy', env=eval_env, verbose=1, seed=seed)
     
     # csil_trainer.policy.actor = wrap_bc_policy(bc_trainer.policy)
     # csil_trainer.actor = csil_trainer.policy.actor
-    if args.bc_algo == 'sac':
-        csil_trainer.policy = bc_trainer.policy
-        print('Initialize CSIL agent with BC policy')
+    csil_trainer.policy.load_state_dict(bc_trainer.policy.state_dict(), strict=False)
+    print('Initialize CSIL agent with BC policy')
+    csil_returns, csil_timesteps = evaluate_policy(csil_trainer.policy,eval_env, n_eval_episodes=args.eval_steps, return_episode_rewards=True)
+    print('Initial CSIL Return: {} +/- {}'.format(np.mean(csil_returns), np.std(csil_returns)))
+    print('Initial CSIL Timesteps: {} +/- {}'.format(np.mean(csil_timesteps), np.std(csil_timesteps)))
+
+        
 
     # print(csil_trainer.policy.actor)
 
@@ -114,15 +129,15 @@ def train_csil(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # basic parameters
-    parser.add_argument("--env_id", help="Name of environment", default="HalfCheetahBulletEnv-v0")
-    parser.add_argument("--algo", default='sac', type=str, help="CSIL agent to use")
+    parser.add_argument("--env_id", help="Name of environment", default="PongNoFrameskip-v4")
+    parser.add_argument("--algo", default='ppo', type=str, help="CSIL agent to use")
     parser.add_argument("--config_path", default='/home/zli911/imitation/expert_files/rl-trained-agents/', type=str)
-    parser.add_argument("--seed", default=0, type=int)
+    parser.add_argument("--seed", default=6, type=int)
     parser.add_argument("--eval_freq", default=100000, type=int)
 
     # Expert parameters
     parser.add_argument("--test_zoo", default=True, type=bool)  
-    parser.add_argument("--eval_steps", default=100, type=int)
+    parser.add_argument("--eval_steps", default=1, type=int)
     parser.add_argument("--weight_path", default='/home/zli911/imitation/expert_files/', type=str)
     parser.add_argument("--model_name", default='best_model.zip', type=str)
     parser.add_argument("--expert_episodes", default=1, type=int)
@@ -133,23 +148,31 @@ if __name__ == "__main__":
     # BC parameters
     parser.add_argument("--bc_epochs", default=100, type=int)
     parser.add_argument("--bc_algo", default='sac', type=str)
-    parser.add_argument("--bc_batch_size", default=32, type=int)
-    parser.add_argument("--bc_hidden_size", default=256, type=int)
-    parser.add_argument("--bc_ent_weight", default=0.05, type=float)
-    parser.add_argument("--bc_l2_weight", default=0.01, type=float)
+    parser.add_argument("--bc_batch_size", default=64, type=int)
+    parser.add_argument("--bc_hidden_size", default=512, type=int)
+    parser.add_argument("--bc_ent_weight", default=0.00, type=float)
+    parser.add_argument("--bc_l2_weight", default=0.00, type=float)
+    parser.add_argument("--adaptive_temp", default=0, type=int)
+    parser.add_argument("--rho", default=0.5, type=float)
 
     # CSIL parameters
-    parser.add_argument("--csil_timesteps", default=1000000, type=int)
-    parser.add_argument("--csil_batch_size", default=256, type=int)
+    parser.add_argument("--csil_timesteps", default=10000000, type=int)
+    parser.add_argument("--csil_batch_size", default=128, type=int)
+    parser.add_argument("--csil_lr", default=3e-4, type=int)
+
+    # for SAC
     parser.add_argument("--csil_buffer_size", default=300000, type=int)
     parser.add_argument("--csil_tau", default=0.02, type=int)
-    parser.add_argument("--csil_lr", default=3e-4, type=int)
     parser.add_argument("--csil_train_freq", default=64, type=int)
     parser.add_argument("--csil_gradient_steps", default=64, type=int)
+
+    # for PPO
+    parser.add_argument("--csil_n_steps", default=128, type=int)
+    parser.add_argument("--csil_n_epochs", default=4, type=int)
+    parser.add_argument("--csil_clip_range", default=0.1, type=float)
 
 
     
     args = parser.parse_args()
-    print(args)
 
     train_csil(args)

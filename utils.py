@@ -1,11 +1,12 @@
 import gymnasium as gym
 from gymnasium import spaces
-from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv, VecFrameStack, VecTransposeImage
 from stable_baselines3.common.atari_wrappers import AtariWrapper
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.env_util import make_vec_env, make_atari_env
 from stable_baselines3.common.utils import set_random_seed, constant_fn
 from imitation.rewards.reward_wrapper import RewardVecEnvWrapper
+from stable_baselines3.common.evaluation import evaluate_policy
 
 
 # Patch and register pybullet envs
@@ -26,12 +27,26 @@ import torch.nn as nn
 import torch
 import copy
 import pickle
+def is_atari(env_name):
+    return env_name in ['PongNoFrameskip-v4', 
+                        'BreakoutNoFrameskip-v4', 
+                        'SpaceInvadersNoFrameskip-v4', 
+                        'BeamRiderNoFrameskip-v4',
+                        'QbertNoFrameskip-v4',
+                        'SeaquestNoFrameskip-v4',
+                        'AsteroidsNoFrameskip-v4']
 
-def create_env(env_id, n_envs=1, norm_obs=True, norm_reward=False, norm_action=False, stats_path=None, seed=0, env_wrapper=None, manual_load=False, reward_wrap=None):
+def create_env(env_id, n_envs=1, norm_obs=True, norm_reward=False, norm_action=False, stats_path=None, seed=0, env_wrapper=None, frame_num=1, manual_load=False, reward_wrap=None):
     # env = gym.make(env_id, apply_api_compatibility=True)
     # env = DummyVecEnv([lambda: env])
     # env.seed(seed=0)
-    env = make_vec_env(env_id, n_envs, seed=seed, wrapper_class=env_wrapper)
+    if is_atari(env_id):
+        env = make_atari_env(env_id, n_envs, seed=seed)
+        env = VecFrameStack(env, n_stack=frame_num)
+        env = VecTransposeImage(env)
+    else:
+        env = make_vec_env(env_id, n_envs, seed=seed, wrapper_class=env_wrapper)
+
 
     if norm_obs or norm_reward:
         if stats_path is not None:
@@ -79,11 +94,12 @@ def evaluate(env, model, num_episodes=10, deterministic=True):
 
         while not done:
             action, _ = model.predict(state, deterministic=deterministic)
+            # action = np.clip(action, model.action_space.low, model.action_space.high)  # type: ignore[assignment, arg-type]
             next_state, reward, done, info = env.step(action)
+            print('eval:', action, reward)
             state = next_state
             total_r += reward
             total_step += 1
-            # print(info)
             # if 'episode' in info.keys():
             #     total_returns.append(info['episode']['r'])
             #     total_timesteps.append(info['episode']['l'])
@@ -106,7 +122,7 @@ def load_pretrained_expert(env, algo, model_path=None, eval=False, eval_steps=10
     if eval:
         # Evaluate the trained agent
         print('Evaluate the trained agent')
-        total_returns, total_timesteps = evaluate(env, model, num_episodes=eval_steps)
+        total_returns, total_timesteps = evaluate_policy(model, env,  n_eval_episodes=eval_steps)
         print('Return: {} +/- {}'.format(np.mean(total_returns), np.std(total_returns)))
         print('Timesteps: {} +/- {}'.format(np.mean(total_timesteps), np.std(total_timesteps)))
 
@@ -146,6 +162,11 @@ def get_saved_hyperparams(config_path):
             else:
                 hyperparams["norm_obs"] = hyperparams["normalize"]
                 hyperparams["norm_reward"] = hyperparams["normalize"]
+        else:
+            hyperparams["norm_obs"] = False
+            hyperparams["norm_reward"] = False
+        if 'frame_stack' not in hyperparams.keys():
+            hyperparams['frame_stack'] = 1
     return hyperparams
 
 
@@ -246,7 +267,15 @@ class RewardDataset(torch.utils.data.Dataset):
         self.transitions = copy.deepcopy(trainsitions)
     
     def __getitem__(self, index):
-        return self.transitions.obs[index], self.transitions.next_obs[index], self.transitions.acts[index], self.transitions.dones[index], self.transitions.infos[index]
+        return self.transitions.obs[index], self.transitions.next_obs[index], self.transitions.acts[index], self.transitions.dones[index], self.transitions.infos[index], self.transitions.rews[index]
     
     def __len__(self):
         return len(self.transitions)
+
+def pearson_correlation(tensor1, tensor2):
+    """ Compute Pearson Correlation Coefficient for two PyTorch tensors. """
+    mean1 = torch.mean(tensor1)
+    mean2 = torch.mean(tensor2)
+    numerator = torch.sum((tensor1 - mean1) * (tensor2 - mean2))
+    denominator = torch.sqrt(torch.sum((tensor1 - mean1) ** 2) * torch.sum((tensor2 - mean2) ** 2))
+    return numerator / denominator

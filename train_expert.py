@@ -53,8 +53,8 @@ def train_expert(args):
 
     # Create environment
     env_wrapper = get_wrapper_class(hyperparams)
-    env = create_env(env_id, n_envs=n_envs, norm_obs=hyperparams['norm_obs'], norm_reward=hyperparams['norm_reward'], seed=seed, env_wrapper=env_wrapper)
-    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams['norm_obs'], norm_reward=False, seed=seed, env_wrapper=env_wrapper)
+    env = create_env(env_id, n_envs=n_envs, norm_obs=hyperparams['norm_obs'], norm_reward=hyperparams['norm_reward'], seed=seed, env_wrapper=env_wrapper, frame_num=hyperparams['frame_stack'])
+    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams['norm_obs'], norm_reward=False, seed=seed, env_wrapper=env_wrapper, frame_num=hyperparams['frame_stack'])
 
     # Create model
     model = ALGOS[algo](env=env, seed=seed, verbose=1, **processed_hyperparams)
@@ -95,10 +95,10 @@ def test_expert(args):
     hyperparams = get_saved_hyperparams(config_path)
 
     # Create environment
-    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path)
+    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, frame_num=hyperparams['frame_stack'])
 
     # Evaluate the trained agent
-    expert = load_pretrained_expert(eval_env, algo, model_path=model_path, eval=True, eval_steps=100)
+    expert = load_pretrained_expert(eval_env, algo, model_path=model_path, eval=True, eval_steps=10)
 
     return eval_env, expert
 
@@ -121,7 +121,7 @@ def test_zoo_expert(args):
             "clip_range": lambda _: 0.0,
         }
         print('No model path provided, load the old pretrained expert and resave it!')
-        model_path_old = os.path.join(zoo_path, algo, env_id+'_1',env_id+'.zip')
+        model_path_old = os.path.join(zoo_path, algo, env_id+'_1',env_id+'-1.zip')
         expert = ALGOS[algo].load(model_path_old, custom_objects=custom_objects)
         expert.save(model_path)
         print('Expert model re-saved!')
@@ -132,10 +132,10 @@ def test_zoo_expert(args):
     # Create environment
     print(hyperparams)
     env_wrapper = get_wrapper_class(hyperparams)
-    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, env_wrapper=env_wrapper, manual_load=True)
+    eval_env = create_env(env_id, n_envs=1, norm_obs=hyperparams['norm_obs'], norm_reward=False, seed=seed, stats_path=stats_path, env_wrapper=env_wrapper, frame_num=hyperparams['frame_stack'], manual_load=True)
 
     # Evaluate the trained agent
-    expert = load_pretrained_expert(eval_env, algo, model_path=model_path, eval=True, eval_steps=10)
+    expert = load_pretrained_expert(eval_env, algo, model_path=model_path, eval=True, eval_steps=1)
 
     return eval_env, expert
 
@@ -158,7 +158,8 @@ def save_expert_trajectory_IQ(args):
     # Truncate rollouts based on expert_episodes
     stats = rollout.rollout_stats(rollouts)
     print(f"Rollout stats: {stats}")
-    # print(rollouts)
+    print(rollouts)
+    return 0
 
     expert_trajs = defaultdict(list)
     for traj_num in range(len(rollouts)):
@@ -182,7 +183,7 @@ def save_expert_trajectory_IQ(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env_id", help="Name of environment", default="HalfCheetahBulletEnv-v0")
+    parser.add_argument("--env_id", help="Name of environment", default="BreakoutNoFrameskip-v4")
     parser.add_argument("--algo", default='ppo', type=str)
     parser.add_argument("--config_path", default='/home/zli911/imitation/expert_files/rl-trained-agents/', type=str)
     parser.add_argument("--save_path", default='/home/zli911/imitation/expert_files/', type=str)

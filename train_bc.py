@@ -3,6 +3,7 @@ import gymnasium as gym
 import os
 import argparse
 import torch
+import torch.nn as nn
 
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.policies import ActorCriticPolicy
@@ -14,9 +15,9 @@ from imitation.algorithms import bc
 from imitation.data import rollout
 
 from utils import create_env, evaluate, get_saved_hyperparams, preprocess_hyperparams, load_pretrained_expert, load_stats_to_env
-from networks import SACBCPolicy, RewardNet_from_policy
+from networks import SACBCPolicy, RewardNet_from_policy, BC_base, PPOBCPolicy
 
-BC_POLICY_DICT = {'sac':SACBCPolicy, 'ppo':ActorCriticPolicy}
+BC_POLICY_DICT = {'sac':SACBCPolicy, 'ppo':PPOBCPolicy, 'base': BC_base}
 
 def train_bc(env, expert, expert_episodes=1, seed=0, save=True, args=None):
     '''
@@ -38,7 +39,8 @@ def train_bc(env, expert, expert_episodes=1, seed=0, save=True, args=None):
 
     transitions = rollout.flatten_trajectories(rollouts)
 
-    policy = BC_POLICY_DICT[args.bc_algo](env.observation_space, env.action_space, lr_schedule=lambda _: torch.finfo(torch.float32).max, net_arch=[args.bc_hidden_size, args.bc_hidden_size])
+    policy = BC_POLICY_DICT[args.bc_algo](env.observation_space, env.action_space, lr_schedule=lambda _: torch.finfo(torch.float32).max, net_arch=[args.bc_hidden_size, args.bc_hidden_size], activation_fn = nn.ReLU)
+    print(policy)
     bc_trainer = bc.BC(observation_space=env.observation_space, 
                        action_space=env.action_space,
                        demonstrations=transitions,
@@ -82,7 +84,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", default=0, type=int)
    
     parser.add_argument("--test_zoo", default=True, type=bool)  
-    parser.add_argument("--eval_steps", default=100, type=int)
+    parser.add_argument("--eval_steps", default=10, type=int)
     parser.add_argument("--weight_path", default='/home/zli911/imitation/expert_files/', type=str)
     parser.add_argument("--model_name", default='best_model.zip', type=str)
 
@@ -92,10 +94,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--expert_episodes", default=1, type=int)
     parser.add_argument("--bc_algo", default='sac', type=str)
-    parser.add_argument("--bc_epochs", default=100, type=int)
-    parser.add_argument("--bc_batch_size", default=32, type=int)
-    parser.add_argument("--bc_hidden_size", default=256, type=int)
-    parser.add_argument("--bc_ent_weight", default=0.00, type=float)
+    parser.add_argument("--bc_epochs", default=50, type=int)
+    parser.add_argument("--bc_batch_size", default=64, type=int)
+    parser.add_argument("--bc_hidden_size", default=64, type=int)
+    parser.add_argument("--bc_ent_weight", default=0.01, type=float)
     parser.add_argument("--bc_l2_weight", default=0.01, type=float)
     
     args = parser.parse_args()
